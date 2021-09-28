@@ -1,8 +1,8 @@
-const fs = require('fs')
 const { expect } = require('chai');
 var MarketPlace = artifacts.require('./MarketPlace.sol');
 
 contract('MarketPlace Smart Contract Testing', function (_accounts) {
+    let nftContract = new web3.eth.Contract(require('../build/contracts/MyNFT.json').abi, "0x38a676D492f504d5279f09d244F873c01264ee4a");
     it('Basic tests: Products === [], at init time', function (done) {
         MarketPlace.deployed().then(function (instance) {
             instance.getProductsInSell().then(function (products) {
@@ -11,59 +11,41 @@ contract('MarketPlace Smart Contract Testing', function (_accounts) {
             });
         });
     });
-    it('Basic test: ProductN.ID = N - 1',  function (done) {
+    let nftIds = [];
+    it('Publishing sell offer to nfts: ProduceN.ID = N - 1', function (done) {
         MarketPlace.deployed().then(async function (_instance) {
             instance = _instance;
             for (var i = 0; i < 3; i++) {
-                await instance.addProductToSell("selling one article", "article", web3.utils.toWei('4', 'ether'), {from: _accounts[0]}).then(function () {
-                    return instance.getProductsInSell().then(function (products) {
-                        assert.equal(products.length, i + 1, "products length should be " + (i + 1));
-                        assert.equal(products[i].productId, i + 1, "product_id should be " + i);
-                    });
+                console.log(`Minting NFTs`);
+                await nftContract.methods.mint().send({from: _accounts[0], gas: 830000}).then(e => nftIds.push(e.events.Transfer.returnValues.tokenId));
+                console.log(`Approving the smart contract to manage their NFTs`);
+                await nftContract.methods.approve(_instance.contract._address, nftIds[i]).send({from: _accounts[0]});
+                console.log(`Adding products: ${i}`);
+                await instance.addProductToSell(nftIds[i], web3.utils.toWei('4', 'ether'), {from: _accounts[0]}).catch(e => console.error("Error adding product."));
+                console.log(`Get products: ${i}`);
+                await instance.getProductsInSell().then(function (products) {
+                    console.log(products.map(e => e.tokenId));
+                    assert.equal(products.length, i + 1, "products length should be " + (i + 1));
+                    assert.equal(products[i].tokenId, nftIds[i], "product_id should be " + nftIds[i]);
                 });
             }
             done();
             
         });
     });
-    var ended = false;
-    it('Complex tests: Three products bought', function (done) {
+    it('Selling products: ProduceN.ID = N - 1', function (done) {
         MarketPlace.deployed().then(async function (_instance) {
             instance = _instance;
             for (var i = 0; i < 3; i++) {
+                console.log(`Selling products: ${i}`);
+                await instance.buyProduct(i + 1, {from: _accounts[1], value: web3.utils.toWei('4', 'ether') });
+                console.log(`Get products: ${i}`);
                 await instance.getProductsInSell().then(function (products) {
-                    assert.equal(products.length, 3 - i, `i = ${i}, products length should be ${3 - i}`);
-                    assert.equal(products.slice(-1)[0].productId, 3 - i, `i = ${i}, product_id should be ${3 - i}`);
-                });
-
-                let err = await instance.buyProduct(3 - i, { from: _accounts[1], value: web3.utils.toWei('4', 'ether')}).then(e => null).catch(function(err) {
-                    if (!ended) done(`Iteracion ${i}: ${err}`);
-                    return err;
-                });
-                if (err) return done("Error");
-            }
-            if (!ended) done();
-            ended = false;
-        });
-    });
-    it('Complex tests: Five products in sell one product bought', function (done) {
-        MarketPlace.deployed().then(async function (_instance) {
-            instance = _instance;
-            for (var i = 0; i < 5; i++) {
-                await instance.addProductToSell("selling one article", "article", web3.utils.toWei('4', 'ether'), {from: _accounts[0]}).catch(function (err) {
-                    if (!ended) done(`Iteracion ${i}: ${err}`);
-                    ended = true;
+                    assert.equal(products.length, 2 - i, "products length should be " + (i + 1));
                 });
             }
-            let err = await instance.buyProduct(6, { from: _accounts[1], value: web3.utils.toWei('4', 'ether')}).then(() => false).catch(function(err) {
-                if (!ended) done(`Iteracion ${i}: ${err}`);
-                return true;
-            });
-            if (err) return;
-            await instance.getProductsInSell().then(products => {
-                expect(products.map(e => e.productId)).to.be.deep.equal(["4","5","7","8"]);
-            });
-            if (!ended) done();
+            done();
+            
         });
     });
 });

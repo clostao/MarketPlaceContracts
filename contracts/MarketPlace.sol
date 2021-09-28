@@ -12,6 +12,7 @@ contract MarketPlace {
     address owner;
     bool sold;
     uint256 price;
+    uint256 productId;
   }
 
   string name;
@@ -39,17 +40,15 @@ contract MarketPlace {
     ) external {
       
     // Setting Product struct fields
-    Product memory product = Product(_tokenId, msg.sender, false, _price);
+    uint256 productId = nextProductId;
+    Product memory product = Product(_tokenId, msg.sender, false, _price, productId);
 
     // Altering state
-    uint256 productId = nextProductId;
     products[productId] = product;
     emit LogProductInSell(product);
     nextProductId = nextProductId + 1;
     productsToSell = productsToSell + 1;
 
-    // Transfer NFT
-    NFTManager(nftContract).safeTransferFrom(msg.sender, nftContract, _tokenId);
   }
 
   function getProductsInSell() public view returns (Product[] memory) {
@@ -82,11 +81,13 @@ contract MarketPlace {
     // Then we process the tx
     payable(products[productId].owner).transfer(products[productId].price);
     products[productId].sold = true;
-    products[productId].owner = msg.sender;
     productsToSell = productsToSell - 1;
 
     // Transfer NFT
-    NFTManager(nftContract).safeTransferFrom(nftContract, msg.sender, products[productId].tokenId);
+    NFTManager(nftContract).safeTransferFrom(products[productId].owner, msg.sender, products[productId].tokenId);
+
+    // Changing owner
+    products[productId].owner = msg.sender;
 
     // And emit the correspondant event
     emit LogProductBought(productId);
